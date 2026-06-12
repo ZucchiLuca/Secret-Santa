@@ -1,0 +1,1103 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'contact_picker_screen.dart';
+import 'themes.dart';
+
+void main() {
+  runApp(const SecretSantaApp());
+}
+
+class SecretSantaApp extends StatelessWidget {
+  const SecretSantaApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Secret Santa',
+      theme: ChristmasThemes.getTheme(),
+      home: const MainScreen(),
+    );
+  }
+}
+
+class Participant {
+  final String name;
+  final String phone;
+
+  Participant({required this.name, required this.phone});
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  final List<Participant> participants = [];
+  final TextEditingController _globalMessageController = TextEditingController(text: "Buon Natale, il tuo Secret Santa è: [NOME]");
+  final TextEditingController _personalNameController = TextEditingController(text: "Luchino");
+  final TextEditingController _personalPhoneController = TextEditingController(text: "+39 389 4905541");
+  final TextEditingController _revealNameController = TextEditingController();
+  int _currentRevealIndex = 0;
+
+  void _showAddDialog() {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController phoneController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Aggiungi Partecipante'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Numero di Telefono',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annulla'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final phone = phoneController.text.trim();
+
+                if (name.isNotEmpty && phone.isNotEmpty) {
+                  setState(() {
+                    participants.add(Participant(name: name, phone: phone));
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Aggiungi'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showRubrica() async {
+    final selected = await Navigator.push<SelectedContact>(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactPickerScreen()),
+    );
+    if (selected != null) {
+      setState(() {
+        // Avoid duplicate entries for the same name+phone.
+        if (!participants.any(
+          (p) => p.name == selected.name && p.phone == selected.phone,
+        )) {
+          participants.add(
+            Participant(name: selected.name, phone: selected.phone),
+          );
+        }
+      });
+    }
+  }
+
+  void _showInvia() async {
+    // First show confirmation dialog about including own name
+    final includeOwnName = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '❓ Includere il tuo nome tra i partecipanti?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Se includi il tuo nome, riceverai anche tu un destinatario del Secret Santa.',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person, color: Colors.black),
+                            const SizedBox(width: 12),
+                            Text(
+                              _personalNameController.text,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.phone, color: Colors.black, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              _personalPhoneController.text.isEmpty ? '+39 389 4905541' : _personalPhoneController.text,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Sì'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('No'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (includeOwnName == null) return; // cancelled
+
+    // Build final participant list
+    final List<Participant> finalParticipants = List.from(participants);
+    if (includeOwnName && !finalParticipants.any((p) => p.name == _personalNameController.text)) {
+      finalParticipants.add(
+        Participant(name: _personalNameController.text, phone: _personalPhoneController.text.trim().isEmpty ? '+39 389 4905541' : _personalPhoneController.text.trim()),
+      );
+    }
+
+    if (finalParticipants.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Servono almeno 2 partecipanti per generare le coppie!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Navigate to pairs screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PairsScreen(
+          participants: finalParticipants,
+          personalName: _personalNameController.text,
+          globalMessage: _globalMessageController.text,
+        ),
+      ),
+    );
+  }
+
+  void _onSmallButtonPressed() {
+    if (participants.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aggiungi prima dei partecipanti!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    _showGlobalConfigDialog();
+  }
+
+  void _showGlobalConfigDialog() {
+    final originalText = _globalMessageController.text;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '🎁 Personalizza il messaggio',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Questo messaggio verrà inviato a tutti i partecipanti:',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _globalMessageController,
+                    maxLines: null,
+                    minLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Messaggio globale',
+                      hintText: "Buon Natale, il tuo Secret Santa è: [NOME]",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.message),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Salva'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          _globalMessageController.text = originalText;
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Annulla'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPersonalNameDialog() {
+    final originalText = _personalNameController.text;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '👤 Personalizza il tuo nome',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Questo nome apparirà nei messaggi inviati ai partecipanti:',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _personalNameController,
+                    maxLines: 1,
+                    decoration: const InputDecoration(
+                      labelText: 'Il tuo nome',
+                      hintText: "es. Luchino",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _personalPhoneController,
+                    maxLines: 1,
+                    decoration: const InputDecoration(
+                      labelText: 'Il tuo numero di telefono',
+                      hintText: "+39 389 4905541",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.done,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Salva'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          _personalNameController.text = originalText;
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Annulla'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditDialog(int index) {
+    final participant = participants[index];
+    final nameController = TextEditingController(text: participant.name);
+    final phoneController = TextEditingController(text: participant.phone);
+    final originalName = participant.name;
+    final originalPhone = participant.phone;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '✏️ Modifica Partecipante',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Numero di Telefono',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.done,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          final newName = nameController.text.trim();
+                          final newPhone = phoneController.text.trim();
+                          if (newName.isNotEmpty && newPhone.isNotEmpty) {
+                            setState(() {
+                              participants[index] = Participant(
+                                name: newName,
+                                phone: newPhone,
+                              );
+                            });
+                            Navigator.pop(context);
+                          }
+                        },
+                        child: const Text('Salva'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          nameController.text = originalName;
+                          phoneController.text = originalPhone;
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Annulla'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteConfirmDialog(int index) {
+    final participant = participants[index];
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '🗑️ Elimina Partecipante',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Sei sicuro di voler eliminare questo partecipante?',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person, color: Colors.black),
+                            const SizedBox(width: 12),
+                            Text(
+                              participant.name,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.phone, color: Colors.black, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              participant.phone,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            participants.removeAt(index);
+                          });
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Elimina'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Annulla'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showRevealNext() {
+    final participant = participants[_currentRevealIndex];
+    _revealNameController.text = participant.name;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          icon: const Icon(Icons.card_giftcard, size: 64, color: Colors.red),
+          title: Text(
+            '🎁 ${participant.name}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Text(
+                _globalMessageController.text,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Destinatario: ${participant.name}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Partecipanti: ${participants.length}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            if (_currentRevealIndex < participants.length - 1)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _currentRevealIndex++;
+                  });
+                  _showRevealNext();
+                },
+                child: const Text('Avanti ▶'),
+              ),
+            if (_currentRevealIndex == participants.length - 1)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Chiudi 🎅'),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _globalMessageController.dispose();
+    _personalNameController.dispose();
+    _personalPhoneController.dispose();
+    _revealNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          '🎄 Secret Santa 🎅',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: isAndroid ? 20 : 18,
+          ),
+        ),
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Text('👤', style: TextStyle(fontSize: 24)),
+          onPressed: _showPersonalNameDialog,
+          tooltip: 'Personalizza il tuo nome',
+        ),
+        actions: [
+          IconButton(
+            icon: const Text('🎁', style: TextStyle(fontSize: 24)),
+            onPressed: _onSmallButtonPressed,
+            tooltip: 'Configura messaggio globale',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              itemCount: participants.length,
+              itemBuilder: (context, index) {
+                 final participant = participants[index];
+                 return Padding(
+                   padding: const EdgeInsets.symmetric(
+                     horizontal: 12.0,
+                     vertical: 4.0,
+                   ),
+                   child: GestureDetector(
+                     onTap: () => _showEditDialog(index),
+                     onLongPress: () => _showDeleteConfirmDialog(index),
+                     child: Card(
+                       elevation: isAndroid ? 2 : 0,
+                       shape: RoundedRectangleBorder(
+                         borderRadius: BorderRadius.circular(16),
+                       ),
+                       child: ListTile(
+                         leading: CircleAvatar(
+                           backgroundColor: Theme.of(context)
+                               .colorScheme
+                               .primaryContainer,
+                           child: Text(
+                             participant.name[0].toUpperCase(),
+                             style: TextStyle(
+                               color: Theme.of(context)
+                                   .colorScheme
+                                   .onPrimaryContainer,
+                               fontWeight: FontWeight.bold,
+                               fontSize: 18,
+                             ),
+                           ),
+                         ),
+                         title: Text(
+                           participant.name,
+                           style: const TextStyle(fontWeight: FontWeight.w600),
+                         ),
+                         subtitle: Text(participant.phone),
+                         trailing: Icon(
+                            Icons.edit_outlined,
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                            size: 18,
+                          ),
+                       ),
+                     ),
+                   ),
+                 );
+               },
+            ),
+          ),
+           if (participants.isNotEmpty)
+             Container(
+               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+               child: Row(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 children: [
+                   Icon(Icons.edit_outlined, size: 14, color: Colors.grey[500]),
+                   const SizedBox(width: 4),
+                   Text(
+                     'Tocca per modificare',
+                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                   ),
+                   const SizedBox(width: 12),
+                   Icon(Icons.delete_outline, size: 14, color: Colors.grey[500]),
+                   const SizedBox(width: 4),
+                   Text(
+                     'Tieni premuto per eliminare',
+                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                   ),
+                 ],
+               ),
+             ),
+           Container(
+             padding: const EdgeInsets.all(16.0),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _showAddDialog,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Aggiungi manualmente'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _showRubrica,
+                        icon: const Icon(Icons.contacts),
+                        label: const Text('Rubrica'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _showInvia,
+                    icon: const Icon(Icons.send),
+                    label: const Text('Invia'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class Pair {
+  final Participant giver;
+  final Participant receiver;
+  Pair({required this.giver, required this.receiver});
+}
+
+class PairsScreen extends StatefulWidget {
+  final List<Participant> participants;
+  final String personalName;
+  final String globalMessage;
+
+  const PairsScreen({
+    super.key,
+    required this.participants,
+    required this.personalName,
+    required this.globalMessage,
+  });
+
+  @override
+  State<PairsScreen> createState() => _PairsScreenState();
+}
+
+class _PairsScreenState extends State<PairsScreen> {
+  late List<Pair> _pairs;
+
+  @override
+  void initState() {
+    super.initState();
+    _pairs = _generatePairs();
+  }
+
+  List<Pair> _generatePairs() {
+    final shuffled = List<Participant>.from(widget.participants)..shuffle();
+    final List<Pair> pairs = [];
+    for (int i = 0; i < shuffled.length; i++) {
+      pairs.add(
+        Pair(giver: shuffled[i], receiver: shuffled[(i + 1) % shuffled.length]),
+      );
+    }
+    return pairs;
+  }
+
+  void _regeneratePairs() {
+    setState(() {
+      _pairs = _generatePairs();
+    });
+  }
+
+  void _revealPair(Pair pair) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.card_giftcard, size: 64, color: Colors.red),
+        title: Text(
+          '🎁 ${pair.giver.name}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Text(
+              _globalMessage(pair.giver.name),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Destinatario: ${pair.receiver.name}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Chiudi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _globalMessage(String giverName) {
+    return widget.globalMessage.replaceAll('[NOME]', giverName);
+  }
+
+  Future<void> _launchWhatsApp(Pair pair) async {
+    // Open WhatsApp to the GIVER (the one who must give the gift)
+    // Message: template with [NOME] replaced by the receiver's name
+    // e.g. "Buon Natale, il tuo Secret Santa è: B" sent to A
+    String cleanPhone = pair.giver.phone
+        .replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // Ensure phone starts with country code
+    if (!cleanPhone.startsWith('+')) {
+      cleanPhone = '+$cleanPhone';
+    }
+
+    String message = widget.globalMessage.replaceAll('[NOME]', pair.receiver.name);
+
+    final Uri whatsappUrl = Uri.parse(
+        'https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
+
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossibile aprire WhatsApp'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          '🎄 Coppie 🎅',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: isAndroid ? 20 : 18,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _regeneratePairs,
+            tooltip: 'Rigenera coppie',
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _pairs.length,
+        itemBuilder: (context, index) {
+          final pair = _pairs[index];
+          final isMe = pair.giver.name == widget.personalName;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Card(
+              elevation: isAndroid ? 4 : 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _revealPair(pair),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: isMe
+                                ? Colors.amber
+                                : Theme.of(context).colorScheme.primaryContainer,
+                            child: Text(
+                              pair.giver.name[0].toUpperCase(),
+                              style: TextStyle(
+                                color: isMe
+                                    ? Colors.black87
+                                    : Theme.of(context).colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  pair.giver.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                                if (isMe)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      '👑 TU',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (!isMe) ...[
+                            whatsappButton(
+                              onPressed: () => _launchWhatsApp(pair),
+                            ),
+                            const SizedBox(width: 8),
+                          ] else const SizedBox.shrink(),
+                          Icon(Icons.card_giftcard, color: Theme.of(context).colorScheme.primary),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.visibility_outlined, size: 18, color: Colors.grey[600]),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Tocca per scoprire chi è il tuo destinatario',
+                              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
